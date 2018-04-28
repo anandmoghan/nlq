@@ -11,9 +11,9 @@ import constants.main_constants as const
 parser = ArgumentParser()
 parser.add_argument('--batch_size', type=int, default=64,
                     help='Batch Size')
-parser.add_argument('--lr', type=float, default=0.001,
+parser.add_argument('--lr', type=float, default=0.01,
                     help='Learning Rate')
-parser.add_argument('--decay', type=float, default=0.95,
+parser.add_argument('--decay', type=float, default=0.92,
                     help='Decay for Learning Rate')
 parser.add_argument('--epochs', type=int, default=100,
                     help='Number of Epochs')
