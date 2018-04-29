@@ -2,24 +2,20 @@ from argparse import ArgumentParser
 
 from models.data import DataModel
 from models.model import NLQModel
-from services.common import load_data, make_token_to_index, accuracy_plot, load_where_data, save_object
+from services.common import load_data, make_token_to_index, load_where_data, save_object
 from services.logger import Logger
 from models.glove import Glove
 
 import constants.main_constants as const
 
 parser = ArgumentParser()
-parser.add_argument('--batch_size', type=int, default=512,
+parser.add_argument('--batch_size', type=int, default=256,
                     help='Mini Batch Size')
-parser.add_argument('--lr', type=float, default=0.01,
-                    help='Learning Rate')
-parser.add_argument('--decay', type=float, default=0.95,
-                    help='Decay for Learning Rate')
 parser.add_argument('--epochs', type=int, default=100,
                     help='Number of Epochs')
 parser.add_argument('--save', default='../save',
                     help='Model save directory.')
-parser.add_argument('--save_every', type=int, default=500,
+parser.add_argument('--save_every', type=int, default=1000,
                     help='Model save frequency')
 parser.add_argument('--debug', action='store_true',
                     help='Fast debugging mode.')
@@ -54,14 +50,9 @@ data_model = DataModel(query_list=train_query_list, sql_list=train_sql_list, whe
 validation_model = DataModel(query_list=dev_query_list, sql_list=dev_sql_list, where_col_list=dev_where_col_list, where_op_list=dev_where_op_list, token_to_index=token_to_index, batch_size=args.batch_size)
 logger.end_timer()
 
-nlq_model = NLQModel(args, token_weights=token_weights, train_choice=const.TRAIN_WHERE)
+nlq_model = NLQModel(args, token_weights=token_weights, train_choice=const.TRAIN_SEL)
 
 aggregate_accuracy, select_accuracy, where_accuracy = nlq_model.train(data_model, validation_model)
-save_object(aggregate_accuracy, file_name='agg_acc.pkl')
-save_object(select_accuracy, file_name='sel_acc.pkl')
-save_object(where_accuracy, file_name='where_acc.pkl')
-
-
-
-
-
+save_object(aggregate_accuracy, file_name='../plots/agg_acc.pkl')
+save_object(select_accuracy, file_name='../plots/sel_acc.pkl')
+save_object(where_accuracy, file_name='../plots/where_acc.pkl')

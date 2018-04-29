@@ -48,7 +48,7 @@ class NLQModel:
                 sess.run(tf.assign(where_predictor.lr, const.WHERE_LR * (const.WHERE_DECAY ** e)))
 
                 for b in range(num_batches):
-                    print("{}/{} : Epoch {}".format(e * num_batches + b + 1, args.epochs * num_batches, e + 1))
+                    print("{}/{} : Epoch {} - Learning Rate: {}".format(e * num_batches + b + 1, args.epochs * num_batches, e + 1, const.AGG_LR * (const.AGG_DECAY ** e)))
                     query, true_aggregate, true_select, true_where_col, true_where_op = data_model.next_batch()
 
                     if self.train_agg:
@@ -86,7 +86,7 @@ class NLQModel:
                         print("Select: Loss = {:.3f}, Accuracy = {:.2f}".format(select_train_loss, select_accuracy))
 
                     if self.train_where:
-                        where_state = sess.run(select_predictor.initial_state)
+                        where_state = sess.run(where_predictor.initial_state)
                         where_feed = {
                             where_predictor.input_data: query,
                             where_predictor.col_targets: true_where_col,
@@ -143,7 +143,7 @@ class NLQModel:
                         validation_select_accuracy[e] += 100 * accuracy_score(true_select, predicted_output)
 
                     if self.train_where:
-                        where_state = sess.run(select_predictor.initial_state)
+                        where_state = sess.run(where_predictor.initial_state)
                         where_feed = {
                             where_predictor.input_data: query,
                             where_predictor.col_targets: true_where_col,
@@ -182,25 +182,65 @@ class NLQModel:
         init = tf.global_variables_initializer()
         tf_saver = tf.train.Saver(tf.global_variables())
         aggregate_predictor = self.aggregate_predictor
+        select_predictor = self.select_predictor
+        where_predictor = self.where_predictor
         logger = Logger()
         with tf.Session(config=tf.ConfigProto(gpu_options=GPU_OPTIONS)) as sess:
             sess.run(init)
             checkpoint = tf.train.get_checkpoint_state(args.save)
             if checkpoint and checkpoint.model_checkpoint_path:
                 tf_saver.restore(sess, checkpoint.model_checkpoint_path)
-            test_accuracy = 0
+            test_aggregate_accuracy = 0
+            test_select_accuracy = 0
+            test_where_accuracy = 0
             logger.start_timer('Calculating Test Accuracy')
             for b in range(test_model.total_batches):
-                state = sess.run(aggregate_predictor.initial_state)
-                query, true_aggregate, _ = test_model.next_batch()
-                feed = {
+                query, true_aggregate, true_select, true_where_col, true_where_op = test_model.next_batch()
+
+                aggregate_state = sess.run(aggregate_predictor.initial_state)
+                aggregate_feed = {
                     aggregate_predictor.input_data: query,
                     aggregate_predictor.targets: true_aggregate
                 }
+
                 for i, (c, h) in enumerate(aggregate_predictor.initial_state):
-                    feed[c] = state[i].c
-                    feed[h] = state[i].h
-                predicted_output = sess.run([aggregate_predictor.predicted_output], feed)
-                test_accuracy += 100 * accuracy_score(true_aggregate, predicted_output)
+                    aggregate_feed[c] = aggregate_state[i].c
+                    aggregate_feed[h] = aggregate_state[i].h
+
+                _, _, predicted_output = sess.run([aggregate_predictor.cost, aggregate_predictor.final_state, aggregate_predictor.predicted_output], feed_dict=aggregate_feed)
+                test_aggregate_accuracy += 100 * accuracy_score(true_aggregate, predicted_output)
+
+                select_state = sess.run(select_predictor.initial_state)
+                select_feed = {
+                    select_predictor.input_data: query,
+                    select_predictor.targets: true_select
+                }
+
+                for i, (c, h) in enumerate(select_predictor.initial_state):
+                    select_feed[c] = select_state[i].c
+                    select_feed[h] = select_state[i].h
+
+                _, _, predicted_output = sess.run([select_predictor.cost, select_predictor.final_state, select_predictor.predicted_output], feed_dict=select_feed)
+                test_select_accuracy += accuracy_score(true_select, predicted_output)
+
+                where_state = sess.run(select_predictor.initial_state)
+                where_feed = {
+                    where_predictor.input_data: query,
+                    where_predictor.col_targets: true_where_col,
+                    where_predictor.op_targets: true_where_op
+                }
+
+                for i, (c, h) in enumerate(where_predictor.initial_state):
+                    where_feed[c] = where_state[i].c
+                    where_feed[h] = where_state[i].h
+
+                _, _, col_predicted_output, op_predicted_output = sess.run([where_predictor.cost, where_predictor.final_state, where_predictor.col_predicted_output, where_predictor.op_predicted_output], feed_dict=where_feed)
+                test_where_accuracy += 100 * where_accuracy_score(true_where_op, true_where_op, col_predicted_output, op_predicted_output)
+
+            test_aggregate_accuracy /= test_model.total_batches
+            test_select_accuracy /= test_model.total_batches
+            test_where_accuracy /= test_model.total_batches
             logger.end_timer()
-            print('Test Accuracy = %.2f' % (test_accuracy/test_model.total_batches))
+            print('Aggregate Test Accuracy = %.2f' % test_aggregate_accuracy)
+            print('Select Test Accuracy = %.2f' % test_select_accuracy)
+            print('Where Test Accuracy = %.2f' % test_where_accuracy)
