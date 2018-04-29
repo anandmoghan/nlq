@@ -3,7 +3,10 @@ import pickle
 import os.path
 
 import numpy as np
+import csv
+
 from itertools import chain
+import matplotlib.pyplot as plt
 
 import constants.main_constants as const
 
@@ -39,6 +42,22 @@ def load_data(data_dir, split='train', debug=False):
     return query_list, sql_list, table_data, db_path
 
 
+def load_where_data(data_dir, split='train', debug=False):
+    col_path = data_dir + split + '_tok_where_col.csv'
+    op_path = data_dir + split + '_tok_where_op.csv'
+    with open(col_path, 'r') as f:
+        data = csv.reader(f)
+        col_list = np.array([np.array(d[0].split(' '), dtype=int) for d in list(data)])
+    with open(op_path, 'r') as f:
+        data = csv.reader(f)
+        op_list = np.array([np.array(d[0].split(' '), dtype=int) for d in list(data)])
+
+    if debug:
+        col_list = col_list[:const.DEBUG_DATA_SIZE]
+        op_list = op_list[:const.DEBUG_DATA_SIZE]
+    return col_list, op_list
+
+
 def make_token_to_index(data, embedding, use_extra_tokens=True, load_if_exists=False, debug=False):
     if load_if_exists and os.path.exists(const.TOKEN_TO_IDX_SAVE) and os.path.exists(const.TOKEN_WEIGHTS_SAVE):
         token_to_index = load_object(const.TOKEN_TO_IDX_SAVE)
@@ -67,3 +86,24 @@ def make_token_to_index(data, embedding, use_extra_tokens=True, load_if_exists=F
             save_object(token_to_index, const.TOKEN_TO_IDX_SAVE)
             save_object(token_weights, const.TOKEN_WEIGHTS_SAVE)
     return token_to_index, token_weights
+
+
+def where_accuracy_score(true_col, true_op, predicted_col, predicted_op):
+    batch_size = true_col.shape[0]
+    correct = 0
+    for idx in range(batch_size):
+        if np.all(true_col[idx, ] == predicted_col[idx, ]) and np.all(true_op[idx, ] == predicted_op[idx, ]):
+            correct += 1
+    return correct/batch_size
+
+
+def accuracy_plot(train_accuracy, val_accuracy, epochs, save_file):
+    x = range(epochs)
+    fig = plt.figure()
+    ax = fig.subplots()
+    ax.set_xlabel('Epochs', fontsize=12)
+    ax.set_ylabel('Accuracy', fontsize=12)
+    ax.plot(x, train_accuracy, label='Train Accuracy')
+    ax.plot(x, val_accuracy, label='Validation Accuracy')
+    ax.legend()
+    plt.savefig('../plots/'+save_file)
